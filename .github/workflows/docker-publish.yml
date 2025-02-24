@@ -1,0 +1,104 @@
+name: Build, Push, Sign and Deploy Docker Image
+
+# 触发条件：仅在 main 分支且带有 v*.*.* 格式的标签推送时触发
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*.*.*' ]
+
+# 环境变量
+env:
+  REGISTRY: ghcr.io  # 使用 GitHub Container Registry
+  IMAGE_NAME: ${{ github.repository }}  # 镜像名称基于仓库名称
+
+jobs:
+  build-and-push:
+    # 运行环境：使用最新的 Ubuntu
+    runs-on: ubuntu-latest
+    # 权限设置：为签名和操作仓库内容提供必要的权限
+    permissions:
+      contents: read
+      packages: write
+      id-token: write  # 用于签名
+
+    steps:
+      # 检出代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史记录，用于生成元数据
+
+      # 设置 Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 登录到 GitHub Container Registry
+      - name: Log into GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 提取 Docker 元数据（动态生成镜像标签）
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}  # 使用语义化版本号作为标签
+
+      # 构建并推送 Docker 镜像
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .  # 构建上下文为当前目录
+          push: true  # 推送镜像
+          tags: ${{ steps.meta.outputs.tags }}  # 使用动态生成的标签
+          labels: ${{ steps.meta.outputs.labels }}  # 添加镜像元数据
+          cache-from: type=gha  # 使用 GitHub Actions 缓存
+          cache-to: type=gha,mode=max
+
+      # 安装 Cosign 用于镜像签名
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.8.0
+
+      # 签名推送的 Docker 镜像
+      - name: Sign the published Docker image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}  # 动态生成的镜像标签
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}  # 镜像摘要
+        run: |
+          for tag in $TAGS; do
+            echo "Signing image: $tag"
+            cosign sign --yes $tag@${DIGEST}  # 对镜像进行签名
+          done
+
+  deploy:
+    # 部署任务依赖于构建和推送任务成功完成
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      # 通过 SSH 连接到远程服务器并部署应用
+      - name: SSH to Server & Deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}  # 服务器地址
+          username: ${{ secrets.SERVER_USER }}  # 服务器用户名
+          key: ${{ secrets.SERVER_SSH_KEY }}  # SSH 私钥
+          script: |
+            # 拉取最新镜像
+            echo "Pulling latest image..."
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.ref_name }}
+            # 停止并移除旧容器
+            echo "Stopping and removing old container..."
+            docker stop myapp || true
+            docker rm myapp || true
+            # 启动新容器
+            echo "Running new container..."
+            docker run -d --name myapp -p 3000:3000 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.ref_name }}
+            # 清理旧镜像
+            echo "Pruning old images..."
+            docker image prune -af
