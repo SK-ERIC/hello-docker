@@ -68,11 +68,10 @@ jobs:
       - name: Sign the published Docker image
         env:
           TAGS: ${{ steps.meta.outputs.tags }} # 动态生成的镜像标签
-          DIGEST: ${{ steps.build-and-push.outputs.digest }} # 镜像摘要
         run: |
           for tag in $TAGS; do
             echo "Signing image: $tag"
-            cosign sign --yes $tag@${DIGEST}  # 对镜像进行签名
+            cosign sign --yes $tag  # 对镜像进行签名
           done
 
   deploy:
