@@ -3,7 +3,7 @@ name: Build, Push, Sign and Deploy Docker Image
 # 触发条件：仅在 main 分支且带有 v*.*.* 格式的标签推送时触发
 on:
   push:
-    branches: [main]
+    # branches: [main]
     tags: ["v*.*.*"]
 
 # 环境变量
