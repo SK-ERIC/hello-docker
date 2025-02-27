@@ -1,15 +1,13 @@
-name: Build, Push, Sign and Deploy Docker Image
+name: 构建、推送、签名和部署 Docker 镜像
 
 # 触发条件：仅在 main 分支且带有 v*.*.* 格式的标签推送时触发
 on:
   push:
-    # branches: [main]
     tags: ["v*.*.*"]
 
 # 环境变量
 env:
   REGISTRY: ghcr.io # 使用 GitHub Container Registry
-  IMAGE_NAME: ${{ github.repository }} # 镜像名称基于仓库名称
 
 jobs:
   build-and-push:
@@ -23,25 +21,31 @@ jobs:
 
     steps:
       # 检出代码
-      - name: Checkout code
+      - name: 检出代码
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # 获取完整历史记录，用于生成元数据
 
       # 设置 Docker Buildx
-      - name: Set up Docker Buildx
+      - name: 设置 Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       # 登录到 GitHub Container Registry
-      - name: Log into GitHub Container Registry
+      - name: 登录到 GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # 生成小写的 IMAGE_NAME
+      - name: 生成小写的 IMAGE_NAME
+        id: lowercased_image_name
+        run: |
+          echo "IMAGE_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       # 提取 Docker 元数据（动态生成镜像标签）
-      - name: Extract Docker metadata
+      - name: 提取 Docker 元数据
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -50,7 +54,7 @@ jobs:
             type=semver,pattern={{version}}  # 使用语义化版本号作为标签
 
       # 构建并推送 Docker 镜像
-      - name: Build and Push Docker Image
+      - name: 构建并推送 Docker 镜像
         uses: docker/build-push-action@v6
         with:
           context: . # 构建上下文为当前目录
@@ -61,16 +65,16 @@ jobs:
           cache-to: type=gha,mode=max
 
       # 安装 Cosign 用于镜像签名
-      - name: Install cosign
+      - name: 安装 Cosign
         uses: sigstore/cosign-installer@v3.8.0
 
       # 签名推送的 Docker 镜像
-      - name: Sign the published Docker image
+      - name: 签名推送的 Docker 镜像
         env:
           TAGS: ${{ steps.meta.outputs.tags }} # 动态生成的镜像标签
         run: |
           for tag in $TAGS; do
-            echo "Signing image: $tag"
+            echo "正在签名镜像: $tag"
             cosign sign --yes $tag  # 对镜像进行签名
           done
 
@@ -81,11 +85,11 @@ jobs:
 
     steps:
       # 通过 SSH 连接到远程服务器并部署应用
-      - name: SSH to Server & Deploy
+      - name: 通过 SSH 连接到远程服务器并部署应用
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_IP }} # 服务器地址
-          username: ${{ secrets.SERVER_USER }} # 服务器用户名
+          username: ci_user # 服务器用户名
           key: ${{ secrets.SSH_PRIVATE_KEY }} # SSH 私钥
           script: |
             # 定义容器名称和端口
@@ -93,22 +97,18 @@ jobs:
             APP_PORT=3000  # 应用的端口（可以根据需要动态设置）
 
             # 拉取最新镜像
-            echo "Pulling latest image..."
+            echo "正在拉取最新镜像..."
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.ref_name }}
 
             # 检查容器是否存在
             if docker ps -aq -f name=^${CONTAINER_NAME}$; then
-              echo "Stopping and removing existing container..."
-              docker stop ${CONTAINER_NAME} || echo "Container already stopped."
-              docker rm ${CONTAINER_NAME} || echo "Container already removed."
+              echo "正在停止并移除现有容器..."
+              docker stop ${CONTAINER_NAME} || echo "容器已停止。"
+              docker rm ${CONTAINER_NAME} || echo "容器已移除。"
             else
-              echo "No existing container found. Skipping stop and remove."
+              echo "未找到现有容器。跳过停止和移除。"
             fi
 
             # 启动新容器
-            echo "Running new container..."
+            echo "正在启动新容器..."
             docker run -d --name ${CONTAINER_NAME} -p ${APP_PORT}:80 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.ref_name }}
-                        
-            # 清理旧镜像
-            # echo "Pruning old images..."
-            # docker image prune -af
