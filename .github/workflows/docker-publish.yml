@@ -96,9 +96,14 @@ jobs:
             CONTAINER_NAME="github_${{ github.repository }}"  # 使用仓库名称作为容器名称
             APP_PORT=3000  # 应用的端口
 
+            # 在部署任务中重新生成 IMAGE_NAME
+            IMAGE_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')
+            echo "IMAGE_NAME: $IMAGE_NAME"
+
             # 获取镜像标签（去掉 v 前缀）
-            tag=${{ github.event.ref_name }}
+            tag=${{ github.ref_name }}
             tag=${tag#v}  # 去掉 v 前缀
+            echo "Tag: $tag"
 
             # 构造镜像地址
             image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$tag"
