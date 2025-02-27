@@ -8,6 +8,7 @@ on:
 # 环境变量
 env:
   REGISTRY: ghcr.io  # 使用 GitHub Container Registry
+  IMAGE_NAME: hello_docker  # 手动指定镜像名称
 
 jobs:
   build-and-push:
@@ -36,12 +37,6 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.CR_PAT }}
-
-      # 生成小写的 IMAGE_NAME
-      - name: Generate lowercase IMAGE_NAME
-        id: lowercased_image_name
-        run: |
-          echo "IMAGE_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       # 提取 Docker 元数据（动态生成镜像标签）
       - name: Extract Docker metadata
@@ -78,12 +73,9 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}  # SSH 私钥
           script: |
             # 定义容器名称和端口
-            CONTAINER_NAME="github_${{ github.repository }}"  # 使用仓库名称作为容器名称
+            IMAGE_NAME=${{ env.IMAGE_NAME }}
+            CONTAINER_NAME="github_$IMAGE_NAME"
             APP_PORT=3000  # 应用的端口
-
-            # 在部署任务中重新生成 IMAGE_NAME
-            IMAGE_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')
-            echo "IMAGE_NAME: $IMAGE_NAME"
 
             # 获取镜像标签（去掉 v 前缀）
             tag=${{ github.ref_name }}
