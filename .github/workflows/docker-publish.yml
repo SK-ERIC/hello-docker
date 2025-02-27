@@ -106,9 +106,7 @@ jobs:
             echo "Tag: $tag"
 
             # 构造镜像地址
-            image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$tag"
-
-            # 打印镜像地址到日志
+            image="${{ env.REGISTRY }}/$IMAGE_NAME:$tag"
             echo "INFO: Attempting to pull image from: $image"
 
             # 拉取最新镜像
