@@ -89,16 +89,26 @@ jobs:
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_IP }} # 服务器地址
-          username: ci_user # 服务器用户名
+          username: ${{ secrets.SERVER_USER }} # 服务器用户名
           key: ${{ secrets.SSH_PRIVATE_KEY }} # SSH 私钥
           script: |
             # 定义容器名称和端口
             CONTAINER_NAME="github_${{ github.repository }}"  # 使用仓库名称作为容器名称
-            APP_PORT=3000  # 应用的端口（可以根据需要动态设置）
+            APP_PORT=3000  # 应用的端口
+
+            # 获取镜像标签（去掉 v 前缀）
+            tag=${{ github.event.ref_name }}
+            tag=${tag#v}  # 去掉 v 前缀
+
+            # 构造镜像地址
+            image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$tag"
+
+            # 打印镜像地址到日志
+            echo "INFO: Attempting to pull image from: $image"
 
             # 拉取最新镜像
             echo "Pulling latest image..."
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.ref_name }}
+            docker pull $image
 
             # 检查容器是否存在
             if docker ps -aq -f name=^${CONTAINER_NAME}$; then
@@ -111,4 +121,4 @@ jobs:
 
             # 启动新容器
             echo "Running new container..."
-            docker run -d --name ${CONTAINER_NAME} -p ${APP_PORT}:80 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.ref_name }}
+            docker run -d --name ${CONTAINER_NAME} -p ${APP_PORT}:80 $image
