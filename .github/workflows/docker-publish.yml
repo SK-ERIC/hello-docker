@@ -1,4 +1,4 @@
-name: Build, Push, Sign and Deploy Docker Image
+name: Build, Push and Deploy Docker Image
 
 # 触发条件：仅在 main 分支且带有 v*.*.* 格式的标签推送时触发
 on:
@@ -7,24 +7,23 @@ on:
 
 # 环境变量
 env:
-  REGISTRY: ghcr.io # 使用 GitHub Container Registry
+  REGISTRY: ghcr.io  # 使用 GitHub Container Registry
 
 jobs:
   build-and-push:
     # 运行环境：使用最新的 Ubuntu
     runs-on: ubuntu-latest
-    # 权限设置：为签名和操作仓库内容提供必要的权限
+    # 权限设置：为操作仓库内容和推送镜像提供必要的权限
     permissions:
       contents: read
       packages: write
-      id-token: write # 用于签名
 
     steps:
       # 检出代码
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 获取完整历史记录，用于生成元数据
+          fetch-depth: 0  # 获取完整历史记录，用于生成元数据
 
       # 设置 Docker Buildx
       - name: Set up Docker Buildx
@@ -57,26 +56,12 @@ jobs:
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v6
         with:
-          context: . # 构建上下文为当前目录
-          push: true # 推送镜像
-          tags: ${{ steps.meta.outputs.tags }} # 使用动态生成的标签
-          labels: ${{ steps.meta.outputs.labels }} # 添加镜像元数据
-          cache-from: type=gha # 使用 GitHub Actions 缓存
+          context: .  # 构建上下文为当前目录
+          push: true  # 推送镜像
+          tags: ${{ steps.meta.outputs.tags }}  # 使用动态生成的标签
+          labels: ${{ steps.meta.outputs.labels }}  # 添加镜像元数据
+          cache-from: type=gha  # 使用 GitHub Actions 缓存
           cache-to: type=gha,mode=max
-
-      # 安装 Cosign 用于镜像签名
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@v3.8.0
-
-      # 签名推送的 Docker 镜像
-      - name: Sign the published Docker image
-        env:
-          TAGS: ${{ steps.meta.outputs.tags }} # 动态生成的镜像标签
-        run: |
-          for tag in $TAGS; do
-            echo "Signing image: $tag"
-            cosign sign --yes $tag  # 对镜像进行签名
-          done
 
   deploy:
     # 部署任务依赖于构建和推送任务成功完成
@@ -88,9 +73,9 @@ jobs:
       - name: SSH to Server & Deploy
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.SERVER_IP }} # 服务器地址
-          username: ${{ secrets.SERVER_USER }} # 服务器用户名
-          key: ${{ secrets.SSH_PRIVATE_KEY }} # SSH 私钥
+          host: ${{ secrets.SERVER_IP }}  # 服务器地址
+          username: ${{ secrets.SERVER_USER }}  # 服务器用户名
+          key: ${{ secrets.SSH_PRIVATE_KEY }}  # SSH 私钥
           script: |
             # 定义容器名称和端口
             CONTAINER_NAME="github_${{ github.repository }}"  # 使用仓库名称作为容器名称
