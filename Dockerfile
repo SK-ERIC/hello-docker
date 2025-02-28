@@ -8,7 +8,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # 安装所有依赖（包含开发依赖）
-RUN npm ci --include=dev
+RUN npm install
 
 # 复制项目文件
 COPY . .
@@ -23,7 +23,7 @@ FROM nginx:alpine
 COPY --from=builder /app/.next/static /usr/share/nginx/html/_next/static
 COPY --from=builder /app/public /usr/share/nginx/html
 
-# 添加Gzip配置
+# 添加 Gzip 配置
 RUN apk add --no-cache brotli && \
     rm -rf /etc/nginx/conf.d/default.conf
 COPY nginx.conf /etc/nginx/conf.d/default.conf
