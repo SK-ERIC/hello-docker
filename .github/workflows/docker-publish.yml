@@ -1,104 +1,97 @@
-name: Build, Push and Deploy Docker Image
+name: Container CI/CD Pipeline
 
-# 触发条件：仅在 main 分支且带有 v*.*.* 格式的标签推送时触发
 on:
   push:
     tags: ["v*.*.*"]
 
-# 环境变量
 env:
-  REGISTRY: ghcr.io  # 使用 GitHub Container Registry
-  IMAGE_NAME: hello_docker  # 手动指定镜像名称
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+  PROJECT_NAME: "hello-docker" # 唯一标识符（核心变量）
 
 jobs:
   build-and-push:
-    # 运行环境：使用最新的 Ubuntu
     runs-on: ubuntu-latest
-    # 权限设置：为操作仓库内容和推送镜像提供必要的权限
     permissions:
       contents: read
       packages: write
+    outputs:
+      image-name: ${{ steps.process-name.outputs.safe-name }}
+      image-tag: ${{ steps.meta.outputs.version }}
 
     steps:
-      # 检出代码
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # 获取完整历史记录，用于生成元数据
 
-      # 设置 Docker Buildx
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # 登录到 GitHub Container Registry
-      - name: Log into GitHub Container Registry
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.CR_PAT }}
 
-      # 提取 Docker 元数据（动态生成镜像标签）
-      - name: Extract Docker metadata
+      - name: Process naming
+        id: process-name
+        run: |
+          SAFE_NAME=$(echo "$PROJECT_NAME" | 
+            tr '[:upper:]' '[:lower:]' |
+            sed 's/[^a-z0-9-]/-/g' |
+            sed 's/-\+/-/g' |
+            sed 's/^-\|-$//g')
+
+          [ -z "$SAFE_NAME" ] && exit 1
+          echo "safe-name=$SAFE_NAME" >> $GITHUB_OUTPUT
+          echo "IMAGE_NAME=$SAFE_NAME" >> $GITHUB_ENV
+
+      - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{version}}  # 使用语义化版本号作为标签
+            type=semver,pattern={{version}}
 
-      # 构建并推送 Docker 镜像
-      - name: Build and Push Docker Image
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .  # 构建上下文为当前目录
-          push: true  # 推送镜像
-          tags: ${{ steps.meta.outputs.tags }}  # 使用动态生成的标签
-          labels: ${{ steps.meta.outputs.labels }}  # 添加镜像元数据
-          cache-from: type=gha  # 使用 GitHub Actions 缓存
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 保留缓存配置
+          cache-from: type=gha
           cache-to: type=gha,mode=max
 
   deploy:
-    # 部署任务依赖于构建和推送任务成功完成
     needs: build-and-push
     runs-on: ubuntu-latest
+    environment: production
+    env:
+      CONTAINER_PREFIX: "github_"
 
     steps:
-      # 通过 SSH 连接到远程服务器并部署应用
-      - name: SSH to Server & Deploy
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.SERVER_IP }}  # 服务器地址
-          username: ${{ secrets.SERVER_USER }}  # 服务器用户名
-          key: ${{ secrets.SSH_PRIVATE_KEY }}  # SSH 私钥
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 定义容器名称和端口
-            IMAGE_NAME=${{ env.IMAGE_NAME }}
-            CONTAINER_NAME="github_$IMAGE_NAME"
-            APP_PORT=3000  # 应用的端口
+            # 保留原始前缀处理逻辑
+            RAW_NAME="$CONTAINER_PREFIX${{ needs.build-and-push.outputs.image-name }}-${{ needs.build-and-push.outputs.image-tag }}"
 
-            # 获取镜像标签（去掉 v 前缀）
-            tag=${{ github.ref_name }}
-            tag=${tag#v}  # 去掉 v 前缀
-            echo "Tag: $tag"
+            # 强化容器名称处理
+            CLEAN_NAME=$(echo "$RAW_NAME" |
+              tr '[:upper:]' '[:lower:]' |
+              tr -c '[:alnum:]_-' '-' |
+              sed 's/-\+/-/g' |
+              sed 's/^[_-]*//;s/[_-]*$//' |
+              cut -c 1-60)
 
-            # 构造镜像地址
-            image="${{ env.REGISTRY }}/$IMAGE_NAME:$tag"
-            echo "INFO: Attempting to pull image from: $image"
-
-            # 拉取最新镜像
-            echo "Pulling latest image..."
-            docker pull $image
-
-            # 检查容器是否存在
-            if docker ps -aq -f name=^${CONTAINER_NAME}$; then
-              echo "Stopping and removing existing container..."
-              docker stop ${CONTAINER_NAME} || echo "Container already stopped."
-              docker rm ${CONTAINER_NAME} || echo "Container already removed."
-            else
-              echo "No existing container found. Skipping stop and remove."
-            fi
-
-            # 启动新容器
-            echo "Running new container..."
-            docker run -d --name ${CONTAINER_NAME} -p ${APP_PORT}:80 $image
+            docker pull ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ needs.build-and-push.outputs.image-name }}:${{ needs.build-and-push.outputs.image-tag }}
+            docker rm -f $CLEAN_NAME || true
+            docker run -d \
+              --name $CLEAN_NAME \
+              --restart unless-stopped \
+              -p 3000:80 \
+              ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ needs.build-and-push.outputs.image-name }}:${{ needs.build-and-push.outputs.image-tag }}
