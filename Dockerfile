@@ -6,6 +6,9 @@ RUN rm -rf /usr/share/nginx/html/*
 
 # 将本地的 HTML 文件复制到容器中的 Nginx 默认网站目录
 COPY main.html /usr/share/nginx/html/index.html
+COPY gomoku.html /usr/share/nginx/html/gomoku.html
+COPY gomoku.js /usr/share/nginx/html/gomoku.js
+COPY gomoku.css /usr/share/nginx/html/gomoku.css
 
 # 移除不必要的文件
 RUN rm -rf /var/cache/apk/* /tmp/*
