@@ -80,21 +80,41 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 保留原始前缀处理逻辑
-            RAW_NAME="$CONTAINER_PREFIX${{ needs.build-and-push.outputs.image-name }}-${{ needs.build-and-push.outputs.image-tag }}"
+            # 获取经过规范化的参数
+            IMAGE_NAME="${{ needs.build-and-push.outputs.image-name }}"
+            TAG="${{ needs.build-and-push.outputs.image-tag }}"
+            OWNER_LOWER=$(echo "${{ env.OWNER }}" | tr '[:upper:]' '[:lower:]')
 
-            # 强化容器名称处理
+            # 构造完全合规的镜像地址
+            IMAGE_REF="${{ env.REGISTRY }}/$OWNER_LOWER/$IMAGE_NAME:$TAG"
+            
+            # 容器名称处理（双重保险）
+            CLEAN_TAG=$(echo "$TAG" | tr '.' '-')
+            RAW_NAME="${{ env.CONTAINER_PREFIX }}${IMAGE_NAME}-${CLEAN_TAG}"
             CLEAN_NAME=$(echo "$RAW_NAME" |
               tr '[:upper:]' '[:lower:]' |
-              tr -c '[:alnum:]_-' '-' |
+              tr -cd 'a-z0-9-' |
               sed 's/-\+/-/g' |
-              sed 's/^[_-]*//;s/[_-]*$//' |
               cut -c 1-60)
 
-            docker pull ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ needs.build-and-push.outputs.image-name }}:${{ needs.build-and-push.outputs.image-tag }}
-            docker rm -f $CLEAN_NAME || true
+            echo "=== Deployment Parameters ==="
+            echo "Final Image: $IMAGE_REF"
+            echo "Container Name: $CLEAN_NAME"
+
+            # 容器管理流程
+            echo "Pulling image..."
+            docker pull $IMAGE_REF || exit 1
+
+            echo "Removing old container..."
+            docker rm -f $CLEAN_NAME 2>/dev/null || true
+
+            echo "Starting new container..."
             docker run -d \
               --name $CLEAN_NAME \
               --restart unless-stopped \
               -p 3000:80 \
-              ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ needs.build-and-push.outputs.image-name }}:${{ needs.build-and-push.outputs.image-tag }}
+              $IMAGE_REF
+
+            echo "Verifying deployment..."
+            sleep 5
+            docker ps -f name=$CLEAN_NAME --format "table {{.Names}}\t{{.Status}}"
