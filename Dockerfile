@@ -7,8 +7,8 @@ WORKDIR /app
 # 复制 package.json 和 package-lock.json
 COPY package*.json ./
 
-# 安装依赖
-RUN npm install --production --frozen-lockfile
+# 安装所有依赖（包含开发依赖）
+RUN npm ci --include=dev
 
 # 复制项目文件
 COPY . .
