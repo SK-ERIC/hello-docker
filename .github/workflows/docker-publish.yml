@@ -84,7 +84,7 @@ jobs:
             # 获取经过规范化的参数
             IMAGE_NAME="${{ needs.build-and-push.outputs.image-name }}"
             TAG="${{ needs.build-and-push.outputs.image-tag }}"
-            OWNER_LOWER=$(echo "${{ env.OWNER }}" | tr '[:upper:]' '[:lower:]")
+            OWNER_LOWER=$(echo "${{ env.OWNER }}" | tr '[:upper:]' '[:lower:]')
 
             # 构造完全合规的镜像地址
             IMAGE_REF="${{ env.REGISTRY }}/$OWNER_LOWER/$IMAGE_NAME:$TAG"
