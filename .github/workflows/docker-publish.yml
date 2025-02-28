@@ -99,11 +99,6 @@ jobs:
             docker rm -f $CONTAINER_NAME 2>/dev/null || echo "No container to remove."
             sleep 5 
 
-            if sudo lsof -i :3000 | grep -q LISTEN; then
-              echo "Port 3000 is still in use. Killing the process..."
-              sudo lsof -i :3000 | awk 'NR>1 {print $2}' | xargs sudo kill -9
-            fi
-
             echo "Starting new container: $CONTAINER_NAME"
             docker run -d \
               --name $CONTAINER_NAME \
