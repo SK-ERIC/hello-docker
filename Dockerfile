@@ -1,17 +1,32 @@
-# 使用 Nginx 的 Alpine 版本作为基础镜像
+# 构建阶段
+FROM node:18-alpine AS builder
+
+# 设置工作目录
+WORKDIR /app
+
+# 复制 package.json 和 package-lock.json
+COPY package*.json ./
+
+# 安装依赖
+RUN npm install --production --frozen-lockfile
+
+# 复制项目文件
+COPY . .
+
+# 构建项目
+RUN npm run build
+
+# 生产阶段
 FROM nginx:alpine
 
-# 清理默认的 Nginx 配置文件
-RUN rm -rf /usr/share/nginx/html/*
+# 复制构建好的 Next.js 项目
+COPY --from=builder /app/.next/static /usr/share/nginx/html/_next/static
+COPY --from=builder /app/public /usr/share/nginx/html
 
-# 将本地的 HTML 文件复制到容器中的 Nginx 默认网站目录
-COPY main.html /usr/share/nginx/html/index.html
-COPY gomoku.html /usr/share/nginx/html/gomoku.html
-COPY gomoku.js /usr/share/nginx/html/gomoku.js
-COPY gomoku.css /usr/share/nginx/html/gomoku.css
-
-# 移除不必要的文件
-RUN rm -rf /var/cache/apk/* /tmp/*
+# 添加Gzip配置
+RUN apk add --no-cache brotli && \
+    rm -rf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # 暴露 80 端口
 EXPOSE 80
