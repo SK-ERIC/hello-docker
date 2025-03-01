@@ -16,6 +16,9 @@ COPY . .
 # 构建项目
 RUN npm run build
 
+# 调试：打印 /app 目录的内容
+RUN ls -la /app
+
 # 生产阶段
 FROM nginx:alpine
 
