@@ -21,6 +21,8 @@ FROM nginx:alpine
 
 # 复制构建好的 Next.js 项目
 COPY --from=builder /app/.next/static /usr/share/nginx/html/_next/static
+COPY --from=builder /app/public /usr/share/nginx/html
+COPY --from=builder /app/.next/server/pages /usr/share/nginx/html
 
 # 添加 Nginx 配置文件
 COPY nginx.conf /etc/nginx/conf.d/default.conf
