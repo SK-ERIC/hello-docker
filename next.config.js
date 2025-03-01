@@ -1,20 +1,11 @@
-const withBundleAnalyzer = require('@next/bundle-analyzer')({
-  enabled: process.env.ANALYZE === 'true'
-});
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone', // 用于 Docker 构建
+  output: "export", // 必须配置为静态导出
   reactStrictMode: true,
   images: {
-    unoptimized: true, // 禁用图片优化
+    unoptimized: true,
   },
-  webpack: (config) => {
-    config.resolve.alias['@'] = __dirname;
-    return config;
-  },
-  compress: true, // 启用Gzip压缩
-  productionBrowserSourceMaps: false, // 关闭生产环境sourcemap
+  trailingSlash: true, // 确保静态导出兼容性
 };
 
-module.exports = withBundleAnalyzer(nextConfig); 
+module.exports = nextConfig;
