@@ -95,12 +95,20 @@ jobs:
             docker stop $CONTAINER_NAME 2>/dev/null || true
             docker rm $CONTAINER_NAME 2>/dev/null || true
 
+            # 新增网络配置
+            docker network create next-net || true
+
             echo "Running new container..."
             docker run -d \
               --name $CONTAINER_NAME \
               -p 8001:80 \
               -e NODE_ENV=production \
               $IMAGE_REF
+
+            # 新增健康检查
+            echo "等待服务启动..."
+            sleep 10
+            curl --retry 5 --retry-delay 10 --fail http://localhost:80/api/health
 
             echo "Verifying deployment..."
             sleep 5
