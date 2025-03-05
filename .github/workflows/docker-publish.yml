@@ -91,22 +91,16 @@ jobs:
             echo "Pulling image: $IMAGE_REF"
             docker pull $IMAGE_REF || { echo "Failed to pull image: $IMAGE_REF"; exit 1; }
 
+            echo "Stopping and removing existing container if exists..."
+            docker stop $CONTAINER_NAME 2>/dev/null || true
+            docker rm $CONTAINER_NAME 2>/dev/null || true
 
-            # 动态生成 docker-compose.yml 文件
-            cat <<EOF > docker-compose.yml
-            version: '3'
-            services:
-              app:
-                image: $IMAGE_REF
-                ports:
-                  - "8001:80"  # 将宿主机的 8001 端口映射到容器的 80 端口
-                environment:
-                  - NODE_ENV=production
-            EOF
-
-            # start docker-compose
-            docker compose down || { echo "Failed to stop existing containers"; exit 1; }
-            docker compose up -d || { echo "Failed to start new containers"; exit 1; }
+            echo "Running new container..."
+            docker run -d \
+              --name $CONTAINER_NAME \
+              -p 8001:80 \
+              -e NODE_ENV=production \
+              $IMAGE_REF
 
             echo "Verifying deployment..."
             sleep 5
